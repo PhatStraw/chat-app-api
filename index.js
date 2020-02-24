@@ -8,6 +8,7 @@ var io = require("socket.io")(http);
 var morgan = require("morgan");
 var bp = require("body-parser");
 var mongoose = require("mongoose");
+var ObjectId = require("mongoose").Types.ObjectId
 var jwt = require('jsonwebtoken');
 var { User, Message, Chat } = require("./schema.js");
 
@@ -49,12 +50,14 @@ app.get("/", function(req, res) {
   res.sendFile(__dirname + "/index.html");
 });
 
+//connect socket.io
 io.on("connection", function(socket) {
   socket.on("chat message", function(msg) {
     console.log("message: " + msg);
   });
 });
 
+//authenticate a user with oAuth
 app.get("/oauth/github", async (req, res) => {
   let body = {
     code: req.query.code,
@@ -105,6 +108,7 @@ var token = jwt.sign({id: newUsr._id}, process.env.JWT_SECRET);
   res.redirect(`/?token=${token}`, 301)
 });
 
+//create a new room
 app.route('/new/room')
     .post(async function(request,response){
         var decoded = jwt.verify(request.headers.authorization, process.env.JWT_SECRET);
@@ -114,6 +118,14 @@ app.route('/new/room')
            name: request.body.name
        })
        response.json(newChat.toObject())
+    })
+
+//del a room by id
+app.route('/del/room')
+    .post(async function(req,res){
+        console.log(req.headers._id)
+        var deletedDoc = await Chat.remove({ _id: ObjectId(req.headers._id)}).lean().exec()
+        res.json(deletedDoc)
     })
 
 async function start() {
