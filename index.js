@@ -8,8 +8,9 @@ var io = require("socket.io")(http);
 var morgan = require("morgan");
 var bp = require("body-parser");
 var mongoose = require("mongoose");
-var ObjectId = require("mongoose").Types.ObjectId;
+// var ObjectId = require("mongoose").Types.ObjectId;
 var jwt = require("jsonwebtoken");
+var cors = require("cors")
 var { User, Message, Chat } = require("./schema.js");
 
 app.use(
@@ -17,6 +18,8 @@ app.use(
     extended: true
   })
 );
+
+app.use(cors())
 
 app.use(bp.json());
 
@@ -52,10 +55,23 @@ app.get("/", function(req, res) {
 });
 
 //connect socket.io
-io.on("connection", function(socket) {
-  socket.on("chat message", function(msg) {
-    console.log("message: " + msg);
-  });
+io.on('connection', function(socket){
+    socket.on('message', async function({token,message}){
+        var decoded = jwt.verify(token, process.env.JWT_SECRET)
+        var newMessage = await Message.create({
+            from: decoded.id,
+            room: req.body.room,
+            message: req.body.message
+           });
+        
+        var updatedChat = await Chat.findByIdAndUpdate({_id: req.headers._id}, 
+            {messages: newMessage},
+            {new: true}) 
+            .lean()
+            .exec();
+
+        io.emit('message', message);
+    });
 });
 
 //authenticate a user with oAuth
@@ -106,10 +122,20 @@ app.route("/oauth/github").get(async (req, res) => {
 
   var token = jwt.sign({ id: newUsr._id }, process.env.JWT_SECRET);
   console.log("TOKEN :", token);
-  res.redirect(`/?token=${token}`, 301);
+  res.redirect(`http://localhost:8080/?token=${token}`, 301);
 });
-
-//create a new room
+//get the users information
+app.route("/user").get(async (req,res)=> {
+    var decoded = jwt.verify(req.headers.authorization, process.env.JWT_SECRET)
+    var user = await User.findById(decoded.id).lean().exec()
+    console.log("USER:   ",user)
+    var rooms = await Chat.find({members: {$in: [decoded.id]}}).lean().exec()
+    console.log("ROOMS  :   ",rooms)
+    //TODO: Implement grabbing the last message from each chat
+    // var messages = await Message.find({_id: rooms.ma})
+    res.json({user, rooms})
+})
+//create a new chat room
 app.route("/new/room").post(async function(request, response) {
   var decoded = jwt.verify(
     request.headers.authorization,
@@ -123,7 +149,8 @@ app.route("/new/room").post(async function(request, response) {
   response.json(newChat.toObject());
 });
 
-//del a room by id
+//del a chat room by id
+//del all messages!!!
 app.route("/del/room").post(async function(req, res) {
   console.log(req.headers._id);
   var deletedDoc = await Chat.remove({ _id: ObjectId(req.headers._id) })
@@ -132,7 +159,7 @@ app.route("/del/room").post(async function(req, res) {
   res.json(deletedDoc);
 });
 
-//create and send a message
+//create and send a message and add it to the chat room
 app.route("/new/text").post(async (req, res) => {
   var decoded = jwt.verify(req.headers.authorization, process.env.JWT_SECRET);
   console.log(decoded);
@@ -141,7 +168,7 @@ app.route("/new/text").post(async (req, res) => {
     room: req.body.room,
     message: req.body.message
   });
-  var updatedChat = await Chat.findByIdAndUpdate({_id: req.headers._id}, 
+  var updatedChat = await Chat.findByIdAndUpdate({_id: req.body.room}, 
     {messages: newMessage},
     {new: true}) 
     .lean()
@@ -149,6 +176,11 @@ app.route("/new/text").post(async (req, res) => {
   console.log(updatedChat);
   res.json(updatedChat)
 });
+
+app.route("/user/message").get(async (req,res)=>{
+    var messages = await Message.find({room: req.body.room}).lean().exec()
+    res.json(messages)
+})
 
 async function start() {
   await mongoose.connect("mongodb://localhost:27017/gh-chat", {
