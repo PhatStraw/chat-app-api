@@ -8,7 +8,6 @@ var io = require("socket.io")(http);
 var morgan = require("morgan");
 var bp = require("body-parser");
 var mongoose = require("mongoose");
-// var ObjectId = require("mongoose").Types.ObjectId;
 var jwt = require("jsonwebtoken");
 var cors = require("cors")
 var { User, Message, Chat } = require("./schema.js");
@@ -29,6 +28,7 @@ app.use(session({ secret: "grraant" }));
 // mount grant
 
 app.enable("trust proxy");
+
 
 //use grant to access GH oAuth
 app.use(
@@ -156,8 +156,26 @@ app.route("/del/room").post(async function(req, res) {
   var deletedDoc = await Chat.remove({ _id: ObjectId(req.headers._id) })
     .lean()
     .exec();
+  
   res.json(deletedDoc);
 });
+
+//get the messages from a specific room using the rooms id
+app.route('/messages/:room').get(async (req, res) => {
+  var decoded = jwt.verify(
+    req.headers.authorization,
+    process.env.JWT_SECRET
+  );
+  
+  // TODO: use to send error for invalid JWT
+  if (!decoded) {
+    return res.status(401).json({message: 'not authorized'})
+  }
+
+  const messages = await Message.find({room: req.params.room}).sort('createdAt').lean().exec()
+  console.log(messages) 
+  res.json({messages}) 
+})
 
 //create and send a message and add it to the chat room
 app.route("/new/text").post(async (req, res) => {
@@ -177,10 +195,13 @@ app.route("/new/text").post(async (req, res) => {
   res.json(updatedChat)
 });
 
-app.route("/user/message").get(async (req,res)=>{
+
+//not sure if this is still needed
+app.route("/chat/message").get(async (req,res)=>{
     var messages = await Message.find({room: req.body.room}).lean().exec()
     res.json(messages)
 })
+
 
 async function start() {
   await mongoose.connect("mongodb://localhost:27017/gh-chat", {

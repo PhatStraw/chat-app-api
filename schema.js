@@ -12,7 +12,7 @@ var messageSchema = new Schema({
     from:  {type: mongoose.SchemaTypes.ObjectId, ref: "user",required: true}, 
     room: {type: mongoose.SchemaTypes.ObjectId, ref: "room", required: true},
     message: {type: String, required: true},
-});
+}, {timestamps: true});
 
 var chatRoomSchema = new Schema({
     created_by:  {type: mongoose.SchemaTypes.ObjectId, ref: "user", required: true},
