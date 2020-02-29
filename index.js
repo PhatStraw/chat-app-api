@@ -12,6 +12,14 @@ var jwt = require("jsonwebtoken");
 var cors = require("cors")
 var { User, Message, Chat } = require("./schema.js");
 
+
+// io.on('event', function(data){
+//   console.log(data)
+// });
+// io.on('disconnect', function(){
+//   console.log('someone disconnected')
+// });
+
 app.use(
   bp.urlencoded({
     extended: true
@@ -55,24 +63,7 @@ app.get("/", function(req, res) {
 });
 
 //connect socket.io
-io.on('connection', function(socket){
-    socket.on('message', async function({token,message}){
-        var decoded = jwt.verify(token, process.env.JWT_SECRET)
-        var newMessage = await Message.create({
-            from: decoded.id,
-            room: req.body.room,
-            message: req.body.message
-           });
-        
-        var updatedChat = await Chat.findByIdAndUpdate({_id: req.headers._id}, 
-            {messages: newMessage},
-            {new: true}) 
-            .lean()
-            .exec();
 
-        io.emit('message', message);
-    });
-});
 
 //authenticate a user with oAuth
 app.route("/oauth/github").get(async (req, res) => {
@@ -210,5 +201,48 @@ async function start() {
   http.listen(process.env.PORT, function() {
     console.log(`listening on *:${process.env.PORT}`);
   });
+
+  var io = require('socket.io')(http);
+
+  io.on('connection', function(socket) {
+      console.log("SOCKETS CONNECTED",socket.id)
+      socket.on('SEND_MESSAGE', async function(data) {
+        console.log('message1243',data)
+
+        io.emit('MESSAGE', data)
+        
+        var newMessage = await Message.create({
+          from: data.from,
+          room: data.room,
+          message: data.message
+         });
+      
+      var updatedChat = await Chat.findByIdAndUpdate({_id: data.from}, 
+          {messages: newMessage},
+          {new: true}) 
+          .lean()
+          .exec();
+      });
+  });
 }
+
+io.on('connection', function(socket){
+  socket.on('message', async function({token,message}){
+      var decoded = jwt.verify(token, process.env.JWT_SECRET)
+      var newMessage = await Message.create({
+          from: decoded.id,
+          room: req.body.room,
+          message: req.body.message
+         });
+      
+      var updatedChat = await Chat.findByIdAndUpdate({_id: req.headers._id}, 
+          {messages: newMessage},
+          {new: true}) 
+          .lean()
+          .exec();
+
+      io.emit('message', message);
+  });
+});
+
 start();
